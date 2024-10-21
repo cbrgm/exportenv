@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"regexp"
 	"strings"
@@ -20,6 +20,10 @@ type Args struct {
 var envLinePattern = regexp.MustCompile(`^\s*([^#=]+)\s*=\s*(.*?)(\s*#.*)?$`)
 
 func main() {
+	// Configure slog with JSON handler
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{}))
+	slog.SetDefault(logger)
+
 	var args Args
 	arg.MustParse(&args)
 
@@ -30,7 +34,8 @@ func main() {
 
 	envVars, err := parseEnvFile(filePath)
 	if err != nil {
-		log.Fatalf("Error parsing env file: %v", err)
+		slog.Error("Error parsing env file", slog.String("file", filePath), slog.Any("error", err))
+		return
 	}
 
 	if args.Eval {
@@ -50,13 +55,17 @@ func main() {
 	}
 }
 
-// parseEnvFile reads and parses the env file, ignoring comments and empty lines
+// parseEnvFile reads and parses the env file, ignoring comments and empty lines.
 func parseEnvFile(filePath string) (map[string]string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			slog.Error("Error closing file", slog.String("file", filePath), slog.Any("error", err))
+		}
+	}()
 
 	envVars := make(map[string]string)
 	scanner := bufio.NewScanner(file)
@@ -64,12 +73,12 @@ func parseEnvFile(filePath string) (map[string]string, error) {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 
-		// Ignore comments and empty lines
+		// Ignore comments and empty lines.
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
 
-		// Match valid env variable patterns
+		// Match valid env variable patterns.
 		if matches := envLinePattern.FindStringSubmatch(line); matches != nil {
 			key := strings.TrimSpace(matches[1])
 			value := cleanValue(strings.TrimSpace(matches[2]))
@@ -84,24 +93,24 @@ func parseEnvFile(filePath string) (map[string]string, error) {
 	return envVars, nil
 }
 
-// cleanValue handles quotes and removes comments from value
+// cleanValue handles quotes and removes comments from value.
 func cleanValue(value string) string {
-	value = strings.TrimSpace(value) // Trim leading and trailing spaces
+	value = strings.TrimSpace(value) // Trim leading and trailing spaces.
 
 	if len(value) == 0 {
 		return value
 	}
 
-	// Remove quotes if value is wrapped in single, double, or backticks
+	// Remove quotes if value is wrapped in single, double, or backticks.
 	if (value[0] == '"' && value[len(value)-1] == '"') ||
 		(value[0] == '\'' && value[len(value)-1] == '\'') ||
 		(value[0] == '`' && value[len(value)-1] == '`') {
 		value = value[1 : len(value)-1]
 	}
 
-	value = strings.TrimSpace(value) // Trim spaces after removing quotes
+	value = strings.TrimSpace(value) // Trim spaces after removing quotes.
 
-	// Replace escaped quotes and backticks
+	// Replace escaped quotes and backticks.
 	value = strings.ReplaceAll(value, `\"`, `"`)
 	value = strings.ReplaceAll(value, `\'`, `'`)
 	value = strings.ReplaceAll(value, "\\`", "`")
@@ -109,7 +118,7 @@ func cleanValue(value string) string {
 	return value
 }
 
-// displayEnvVars prints the env vars for evaluation purposes
+// displayEnvVars prints the env vars for evaluation purposes.
 func displayEnvVars(envVars map[string]string) {
 	fmt.Println("Evaluated environment variables:")
 	for key, value := range envVars {
