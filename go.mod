@@ -1,6 +1,6 @@
 module github.com/cbrgm/exportenv
 
-go 1.23.2
+go 1.26.5
 
 require github.com/alexflint/go-arg v1.6.1
 
